@@ -1,10 +1,10 @@
 import yadisk
-
-from pathlib import Path
-from typing import Union, List
+from pathlib import Path, PurePosixPath
+from typing import Union, List, Dict, Any
 
 from .base_source import BaseSource
 from .source_type import SourceType
+from ..errors import ConnectionError, AuthenticationError, UploadError, DownloadError
 
 
 class YadiskSource(BaseSource):
@@ -17,34 +17,34 @@ class YadiskSource(BaseSource):
         Args:
             token: OAuth-токен Яндекс.Диска
         """
-        super().__init__(token, source_type=SourceType.YANDEX_DISK) # Здесь должен получать конфиг
-        self.client = yadisk.Client(token=token)
+        super().__init__(token, source_type=SourceType.YANDEX_DISK)
+        self._client = yadisk.Client(token=token)
 
     def connect(self) -> bool:
         """Подключение к Яндекс.Диску."""
         try:
             if self.check_connection():
-                self.is_connected = True
-                print("Успешно подключено к Яндекс.Диску")
+                self._is_connected = True
                 return True
             else:
-                print("Не удалось подключиться к Яндекс.Диску")
                 return False
+        except (AuthenticationError, ConnectionError):
+            raise
         except Exception as e:
-            print(f"Ошибка подключения: {e}")
-            return False
+            raise ConnectionError(f"Ошибка подключения к Яндекс.Диску: {e}") from e
 
     def check_connection(self) -> bool:
         """Проверка подключения к Яндекс.Диску."""
         try:
-            if self.client.check_token():
+            result = self._client.check_token()
+            if result:
                 return True
+            else:
+                return False
         except yadisk.exceptions.UnauthorizedError:
-            print("Неверный токен Яндекс.Диска")
-            return False
+            raise AuthenticationError("Неверный токен Яндекс.Диска")
         except Exception as e:
-            print(f"Ошибка проверки подключения: {e}")
-            return False
+            raise ConnectionError(f"Ошибка проверки подключения: {e}") from e
 
     def list_directories(self, path: str = "/") -> List[str]:
         """
@@ -58,11 +58,13 @@ class YadiskSource(BaseSource):
         """
         result = []
         try:
-            for item in self.client.listdir(path):
-                if item["type"] == "dir":
-                    result.append(item["path"])
+            for item in self._client.listdir(path):
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") == "dir":
+                    result.append(item.get("path", ""))
         except Exception as e:
-            print(f"Ошибка получения списка директорий {path}: {e}")
+            raise ConnectionError(f"Ошибка получения списка директорий {path}: {e}") from e
         return result
 
     def search_directories(self, name: str, path: str = "/") -> List[str]:
@@ -78,11 +80,13 @@ class YadiskSource(BaseSource):
         """
         result = []
         try:
-            for item in self.client.listdir(path):
-                if item["type"] == "dir" and name.lower() in item["name"].lower():
-                    result.append(item["path"])
+            for item in self._client.listdir(path):
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") == "dir" and name.lower() in item.get("name", "").lower():
+                    result.append(item.get("path", ""))
         except Exception as e:
-            print(f"Ошибка поиска директорий {name} в {path}: {e}")
+            raise ConnectionError(f"Ошибка поиска директорий {name} в {path}: {e}") from e
         return result
 
     def download_file(self, remote_path: str, local_path: Union[str, Path]) -> bool:
@@ -95,17 +99,18 @@ class YadiskSource(BaseSource):
 
         Returns:
             True если скачивание успешно, иначе False
+
+        Raises:
+            DownloadError: При ошибке скачивания
         """
         try:
             local_path = Path(local_path)
-            local_path.parent.mkdir(parents=True, exist_ok=True) # Вынести создание дирректории в отдельный метод
+            local_path.parent.mkdir(parents=True, exist_ok=True)
 
-            self.client.download(remote_path, str(local_path))
-            print(f"Файл {remote_path} скачан в {local_path}")
+            self._client.download(remote_path, str(local_path))
             return True
         except Exception as e:
-            print(f"Ошибка скачивания файла {remote_path}: {e}")
-            return False
+            raise DownloadError(f"Ошибка скачивания файла {remote_path}: {e}") from e
 
     def _ensure_directory_exists(self, remote_path: str) -> None:
         """
@@ -113,16 +118,19 @@ class YadiskSource(BaseSource):
 
         Args:
             remote_path: Путь к директории на Яндекс.Диске
+
+        Raises:
+            ConnectionError: При ошибке создания директории
         """
         try:
-            if not self.client.exists(remote_path):
+            if not self._client.exists(remote_path):
                 # Создаем родительские директории рекурсивно
-                parent = Path(remote_path).parent
+                parent = PurePosixPath(remote_path).parent
                 if str(parent) != "/" and str(parent) != ".":
                     self._ensure_directory_exists(str(parent))
-                self.client.mkdir(remote_path)
+                self._client.mkdir(remote_path)
         except Exception as e:
-            print(f"Ошибка создания директории {remote_path}: {e}")
+            raise ConnectionError(f"Ошибка создания директории {remote_path}: {e}") from e
 
     def upload_file(self, local_path: Union[str, Path], remote_path: str) -> bool:
         """
@@ -134,24 +142,24 @@ class YadiskSource(BaseSource):
 
         Returns:
             True если загрузка успешна, иначе False
+
+        Raises:
+            FileNotFoundError: Если локальный файл не найден (встроенное исключение Python)
+            UploadError: При ошибке загрузки
         """
         try:
             local_path = Path(local_path)
             if not local_path.exists():
-                print(f"Локальный файл не найден: {local_path}")
-                return False
+                raise FileNotFoundError(f"Локальный файл не найден: {local_path}")
 
             # Создаем директорию на Яндекс.Диске, если ее нет
-            remote_dir = Path(remote_path).parent
+            remote_dir = PurePosixPath(remote_path).parent
             if str(remote_dir) != "." and str(remote_dir) != "/":
                 self._ensure_directory_exists(str(remote_dir))
 
-            self.client.upload(str(local_path), remote_path)
-            print(f"Файл {local_path} загружен в {remote_path}")
+            self._client.upload(str(local_path), remote_path)
             return True
+        except FileNotFoundError:
+            raise
         except Exception as e:
-            print(f"Ошибка загрузки файла {local_path}: {e}")
-            return False
-
-
-
+            raise UploadError(f"Ошибка загрузки файла {local_path}: {e}") from e
