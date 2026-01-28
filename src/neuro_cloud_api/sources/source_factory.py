@@ -1,10 +1,12 @@
 from typing import Optional, Union
 
 from .base_source import BaseSource
+from .base_source_async import BaseSourceAsync
 from .source_type import SourceType
 from .yadisk_source import YadiskSource
-from .async_yadisk_source import AsyncYadiskSource
+from .yadisk_source_async import YadiskSourceAsync
 from ..settings.config import NeuroCloudApiConfig
+from ..errors import SourceNotImplementedError
 
 
 class SourceFactory:
@@ -59,7 +61,7 @@ class SourceFactory:
 
         Raises:
             ValueError: Если тип источника не поддерживается
-            NotImplementedError: Если источник еще не реализован
+            SourceNotImplementedError: Если источник еще не реализован
         """
         # Если передан config, используем его
         if config is not None:
@@ -76,9 +78,19 @@ class SourceFactory:
         if source_type_enum == SourceType.YANDEX_DISK:
             return YadiskSource(token=token)
         elif source_type_enum == SourceType.GOOGLE_DRIVE:
-            raise NotImplementedError("Google Drive источник еще не реализован")
+            # Проверяем, существует ли реализация
+            try:
+                from .ggldisk_source import GoogleDriveSource
+                return GoogleDriveSource(token=token)
+            except ImportError:
+                raise SourceNotImplementedError("Google Drive источник еще не реализован")
         elif source_type_enum == SourceType.S3:
-            raise NotImplementedError("S3 источник еще не реализован")
+            # Проверяем, существует ли реализация
+            try:
+                from .s3_source import S3Source
+                return S3Source(token=token)
+            except ImportError:
+                raise SourceNotImplementedError("S3 источник еще не реализован")
         else:
             raise ValueError(f"Неподдерживаемый тип источника: {source_type_enum}")
 
@@ -87,7 +99,7 @@ class SourceFactory:
         token: Optional[str] = None,
         source_type: Optional[Union[str, SourceType, NeuroCloudApiConfig]] = None,
         config: Optional[NeuroCloudApiConfig] = None
-    ) -> BaseSource:
+    ) -> BaseSourceAsync:
         """
         Создает асинхронный источник облачного хранилища на основе типа.
 
@@ -97,11 +109,11 @@ class SourceFactory:
             config: Конфигурация (если передан, source_type и token игнорируются)
 
         Returns:
-            Экземпляр соответствующего асинхронного источника (BaseSource)
+            Экземпляр соответствующего асинхронного источника (BaseSourceAsync)
 
         Raises:
             ValueError: Если тип источника не поддерживается
-            NotImplementedError: Если источник еще не реализован
+            SourceNotImplementedError: Если источник еще не реализован
         """
         # Если передан config, используем его
         if config is not None:
@@ -116,16 +128,28 @@ class SourceFactory:
 
         # Создаем соответствующий асинхронный источник на основе типа
         if source_type_enum == SourceType.YANDEX_DISK:
-            return AsyncYadiskSource(token=token)
+            return YadiskSourceAsync(token=token)
         elif source_type_enum == SourceType.GOOGLE_DRIVE:
-            raise NotImplementedError("Google Drive асинхронный источник еще не реализован")
+            # Проверяем, существует ли реализация
+            try:
+                from .ggldisk_source import GoogleDriveSource
+                # Если есть только sync версия, создаем её, но это не async
+                raise SourceNotImplementedError("Google Drive асинхронный источник еще не реализован")
+            except ImportError:
+                raise SourceNotImplementedError("Google Drive асинхронный источник еще не реализован")
         elif source_type_enum == SourceType.S3:
-            raise NotImplementedError("S3 асинхронный источник еще не реализован")
+            # Проверяем, существует ли реализация
+            try:
+                from .s3_source import S3Source
+                # Если есть только sync версия, создаем её, но это не async
+                raise SourceNotImplementedError("S3 асинхронный источник еще не реализован")
+            except ImportError:
+                raise SourceNotImplementedError("S3 асинхронный источник еще не реализован")
         else:
             raise ValueError(f"Неподдерживаемый тип источника: {source_type_enum}")
 
     @staticmethod
-    def create_source_from_config(config: NeuroCloudApiConfig) -> BaseSource:
+    def create_source_from_config(config: NeuroCloudApiConfig) -> Union[BaseSource, BaseSourceAsync]:
         """
         Создает источник на основе конфигурации.
         Автоматически выбирает синхронный или асинхронный источник
@@ -135,7 +159,7 @@ class SourceFactory:
             config: Конфигурация NeuroCloudApiConfig
 
         Returns:
-            Экземпляр соответствующего источника (BaseSource)
+            Экземпляр соответствующего источника (BaseSource или BaseSourceAsync)
         """
         if config.async_enabled:
             return SourceFactory.create_async_source(config=config)

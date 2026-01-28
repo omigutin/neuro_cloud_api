@@ -13,11 +13,11 @@ from .errors import (
 
 # Интерфейсы
 from .sources.base_source import BaseSource
-from .sources.async_base_source import AsyncBaseSource
+from .sources.base_source_async import BaseSourceAsync
 
 # Реализации
 from .sources.yadisk_source import YadiskSource
-from .sources.async_yadisk_source import AsyncYadiskSource
+from .sources.yadisk_source_async import YadiskSourceAsync
 
 # Factory и типы
 from .sources.source_factory import SourceFactory
@@ -37,10 +37,10 @@ __all__ = [
     "SourceNotImplementedError",
     # Интерфейсы
     "BaseSource",
-    "AsyncBaseSource",
+    "BaseSourceAsync",
     # Реализации
     "YadiskSource",
-    "AsyncYadiskSource",
+    "YadiskSourceAsync",
     # Factory и типы
     "SourceFactory",
     "SourceType",

@@ -5,8 +5,8 @@ from typing import Union, List, Any, Optional
 from .source_type import SourceType
 
 
-class BaseSource(ABC):
-    """Базовый абстрактный класс для работы с облачными хранилищами."""
+class BaseSourceAsync(ABC):
+    """Базовый абстрактный класс для асинхронной работы с облачными хранилищами."""
 
     def __init__(self, token: str, source_type: SourceType):
         """
@@ -37,36 +37,36 @@ class BaseSource(ABC):
         return self._is_connected
 
     @abstractmethod
-    def connect(self) -> bool:
+    async def connect(self) -> bool:
         """Подключение к облачному хранилищу."""
         pass
 
     @abstractmethod
-    def check_connection(self) -> bool:
+    async def check_connection(self) -> bool:
         """Проверка подключения к облачному хранилищу."""
         pass
 
     @abstractmethod
-    def list_directories(self, path: str = "/") -> List[str]:
+    async def list_directories(self, path: str = "/") -> List[str]:
         """Получение списка директорий."""
         pass
 
     @abstractmethod
-    def download_file(self, remote_path: str, local_path: Union[str, Path]) -> bool:
+    async def download_file(self, remote_path: str, local_path: Union[str, Path]) -> bool:
         """Скачивание файла."""
         pass
 
     @abstractmethod
-    def upload_file(self, local_path: Union[str, Path], remote_path: str) -> bool:
+    async def upload_file(self, local_path: Union[str, Path], remote_path: str) -> bool:
         """Загрузка файла."""
         pass
 
     @abstractmethod
-    def search_directories(self, name: str, path: str = "/") -> List[str]:
+    async def search_directories(self, name: str, path: str = "/") -> List[str]:
         """Поиск директорий по имени."""
         pass
 
-    def disconnect(self):
+    async def disconnect(self):
         """Отключение от облачного хранилища."""
         self._client = None
         self._is_connected = False
