@@ -103,11 +103,13 @@ asyncio.run(main())
 
 ```bash
 # Синхронный пример
-poetry run python tests/examples/run_sync.py
+poetry run python run_sync.py
 
 # Асинхронный пример
-poetry run python tests/examples/run_async.py
+poetry run python run_async.py
 ```
+
+**Примечание:** Файлы `run_sync.py` и `run_async.py` в корне проекта являются точками входа, которые импортируют функции из `tests/examples/example_sync.py` и `tests/examples/example_async.py`.
 
 ## Разработка
 
@@ -152,9 +154,11 @@ yadisk_api/
 │       ├── sources/           # Реализации источников
 │       └── settings/          # Конфигурация
 ├── tests/
-│   └── examples/             # Примеры использования
-│       ├── run_sync.py       # Синхронный пример
-│       └── run_async.py      # Асинхронный пример
+│   └── examples/             # Примеры использования (функции)
+│       ├── example_sync.py   # Функция синхронного примера
+│       └── example_async.py # Функция асинхронного примера
+├── run_sync.py               # Точка входа для синхронного примера
+├── run_async.py              # Точка входа для асинхронного примера
 ├── docs/
 │   └── DOCUMENTATION.md      # Полная документация
 ├── pyproject.toml            # Конфигурация Poetry
