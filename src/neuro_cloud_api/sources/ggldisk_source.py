@@ -1,28 +1,44 @@
 from pathlib import Path
-from typing import Union
+from typing import Union, List
 
 from .base_source import BaseSource
+from .source_type import SourceType
+from ..errors import SourceNotImplementedError
 
 
-class FileSource(BaseSource):
-    """
-        Источник локального видео-файла.
-        Выполняет только:
-        * нормализацию пути;
-        * проверку существования;
-        * возврат URI.
-        Декодированием занимается Decoder.
-    """
+class GoogleDriveSource(BaseSource):
+    """Класс для работы с Google Drive (заглушка)."""
 
-    def __init__(self, path: Union[str, Path]):
+    def __init__(self, token: str):
         """
-            :param path: путь к видео-файлу
+        Инициализация клиента Google Drive.
+
+        Args:
+            token: OAuth-токен Google Drive
         """
-        self._path: Path = Path(path).expanduser().resolve()
+        super().__init__(token, source_type=SourceType.GOOGLE_DRIVE)
+        self._client = None
 
-        if not self._path.exists():
-            raise FileNotFoundError(f"Video file does not exist: {self._path}")
+    def connect(self) -> bool:
+        """Подключение к Google Drive."""
+        raise SourceNotImplementedError("Google Drive источник еще не реализован")
 
-    def get_uri(self) -> str:
-        """ Возвращает абсолютный путь к файлу. """
-        return str(self._path)
+    def check_connection(self) -> bool:
+        """Проверка подключения к Google Drive."""
+        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+
+    def list_directories(self, path: str = "/") -> List[str]:
+        """Получение списка директорий."""
+        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+
+    def download_file(self, remote_path: str, local_path: Union[str, Path]) -> bool:
+        """Скачивание файла."""
+        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+
+    def upload_file(self, local_path: Union[str, Path], remote_path: str) -> bool:
+        """Загрузка файла."""
+        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+
+    def search_directories(self, name: str, path: str = "/") -> List[str]:
+        """Поиск директорий по имени."""
+        raise SourceNotImplementedError("Google Drive источник еще не реализован")
