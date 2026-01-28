@@ -86,12 +86,12 @@ if source.connect():
 import os
 import asyncio
 from dotenv import load_dotenv
-from src.neuro_cloud_api import AsyncYadiskSource
+from src.neuro_cloud_api import YadiskSourceAsync
 
 load_dotenv()
 
 async def main():
-    source = AsyncYadiskSource(token=os.getenv('YADISK_TOKEN'))
+    source = YadiskSourceAsync(token=os.getenv('YADISK_TOKEN'))
     await source.connect()
     dirs = await source.list_directories("/")
     await source.disconnect()
@@ -103,10 +103,10 @@ asyncio.run(main())
 
 ```bash
 # Синхронный пример
-poetry run python run.py
+poetry run python tests/examples/run_sync.py
 
 # Асинхронный пример
-poetry run python run_async.py
+poetry run python tests/examples/run_async.py
 ```
 
 ## Разработка
@@ -147,12 +147,18 @@ poetry run flake8 src/
 yadisk_api/
 ├── src/
 │   └── neuro_cloud_api/      # Основной пакет
+│       ├── api.py            # Публичный API контракт
+│       ├── errors.py         # Публичные исключения
 │       ├── sources/           # Реализации источников
 │       └── settings/          # Конфигурация
-├── run.py                     # Пример синхронного использования
-├── run_async.py              # Пример асинхронного использования
+├── tests/
+│   └── examples/             # Примеры использования
+│       ├── run_sync.py       # Синхронный пример
+│       └── run_async.py      # Асинхронный пример
+├── docs/
+│   └── DOCUMENTATION.md      # Полная документация
 ├── pyproject.toml            # Конфигурация Poetry
-└── DOCUMENTATION.md          # Полная документация
+└── README.md                 # Краткое описание
 ```
 
 ## Зависимости
@@ -162,7 +168,7 @@ yadisk_api/
 
 ## Документация
 
-Полная документация доступна в файле [DOCUMENTATION.md](DOCUMENTATION.md).
+Полная документация доступна в файле [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md).
 
 ## Лицензия
 
