@@ -1,28 +1,30 @@
 [project]
 name = "neuro-cloud-api"
-version = "1.0.0"
+version = "0.2.0"
 description = "Python библиотека для работы с облачными хранилищами (Яндекс.Диск, Google Drive, S3)"
 authors = [{name = "Your Name", email = "your.email@example.com"}]
-readme = "DOCUMENTATION.md"
+readme = "README.md"
 license = {text = "LICENSE"}
-requires-python = ">=3.9,<4.0"
+requires-python = ">=3.10,<4.0"
 dependencies = [
-    "yadisk>=3.4.0",
+    # extras подтягивают session-backends yadisk: requests (sync),
+    # httpx+aiofiles (async). Без них Client()/AsyncClient() падают на импорте.
+    "yadisk[sync-defaults,async-defaults]>=3.4.0",
     "python-dotenv>=1.0.0",
 ]
 
 [tool.poetry]
 name = "neuro-cloud-api"
-version = "1.0.0"
+version = "0.2.0"
 description = "Python библиотека для работы с облачными хранилищами (Яндекс.Диск, Google Drive, S3)"
 authors = ["Your Name <your.email@example.com>"]
-readme = "DOCUMENTATION.md"
+readme = "README.md"
 license = "LICENSE"
 packages = [{include = "neuro_cloud_api", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
-yadisk = "^3.4.0"
+python = "^3.10"
+yadisk = {version = "^3.4.0", extras = ["sync-defaults", "async-defaults"]}
 python-dotenv = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
@@ -40,17 +42,18 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 100
-target-version = ['py39', 'py310', 'py311', 'py312']
+target-version = ['py310', 'py311', 'py312']
 include = '\.pyi?$'
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

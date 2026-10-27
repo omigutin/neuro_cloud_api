@@ -3,68 +3,34 @@
 ## Содержание
 
 1. [Обзор](#обзор)
-2. [Архитектура](#архитектура)
-3. [Установка и настройка](#установка-и-настройка)
-4. [Структура проекта](#структура-проекта)
-5. [Основные компоненты](#основные-компоненты)
-6. [API Reference](#api-reference)
-7. [Примеры использования](#примеры-использования)
-8. [Паттерны проектирования](#паттерны-проектирования)
-9. [Производительность](#производительность)
+2. [Установка и настройка](#установка-и-настройка)
+3. [Структура проекта](#структура-проекта)
+4. [Контракт remote-путей](#контракт-remote-путей)
+5. [Модель StorageItem](#модель-storageitem)
+6. [Источники: BaseSource и BaseSourceAsync](#источники-basesource-и-basesourceasync)
+7. [Фабрика, SourceType, конфигурация](#фабрика-sourcetype-конфигурация)
+8. [Обработка ошибок](#обработка-ошибок)
+9. [Примеры использования](#примеры-использования)
+10. [Миграция с 1.0](#миграция-с-10)
+11. [Производительность](#производительность)
+12. [Расширение библиотеки](#расширение-библиотеки)
 
 ---
 
 ## Обзор
 
-**Neuro Cloud API** — это Python-библиотека для работы с облачными хранилищами данных. Библиотека предоставляет единый интерфейс для работы с различными облачными сервисами (Яндекс.Диск, Google Drive, S3) и поддерживает как синхронные, так и асинхронные операции.
+**Neuro Cloud API** — Python-библиотека с единым интерфейсом к облачным хранилищам. Сейчас реализован
+Яндекс.Диск (синхронно и асинхронно); Google Drive и S3 — заглушки.
 
-### Основные возможности
+Принципы контракта:
 
-- ✅ Работа с Яндекс.Диском (синхронно и асинхронно)
-- ✅ Единый интерфейс для различных облачных хранилищ
-- ✅ Паттерн Factory для автоматического выбора источника
-- ✅ Загрузка и скачивание файлов
-- ✅ Поиск директорий по имени
-- ✅ Получение списка директорий
-- ✅ Замер производительности операций
-- ✅ Поддержка конфигурации через dataclass
-
----
-
-## Архитектура
-
-Библиотека построена на принципах объектно-ориентированного программирования с использованием следующих паттернов:
-
-- **Abstract Factory** — базовый абстрактный класс `BaseSource`
-- **Factory Pattern** — класс `SourceFactory` для создания источников
-- **Strategy Pattern** — различные реализации для разных облачных сервисов
-
-### Диаграмма классов
-
-```
-BaseSource (ABC) - синхронный интерфейс
-    ├── YadiskSource (синхронный)
-    ├── GoogleDriveSource (заглушка)
-    └── S3Source (заглушка)
-
-BaseSourceAsync (ABC) - асинхронный интерфейс
-    └── YadiskSourceAsync (асинхронный)
-
-SourceFactory
-    ├── parse()
-    ├── create_source() -> BaseSource
-    ├── create_async_source() -> BaseSourceAsync
-    └── create_source_from_config() -> Union[BaseSource, BaseSourceAsync]
-
-SourceType (Enum)
-    ├── YANDEX_DISK
-    ├── GOOGLE_DRIVE
-    └── S3
-
-NeuroCloudApiConfig (dataclass, slots=True)
-```
-
-**Важно:** Синхронные и асинхронные интерфейсы разделены на `BaseSource` и `BaseSourceAsync`. Это обеспечивает четкое разделение контрактов и предотвращает смешивание sync и async методов.
+- пути на удалённой стороне — канонические POSIX-пути от корня (`/Regression/v.avi`), без префиксов
+  провайдера (`disk:`);
+- метаданные возвращаются в provider-independent модели `StorageItem`, а не в сыром объекте провайдера;
+- ошибки транслируются в собственную иерархию исключений с общим базовым `NeuroCloudError`;
+- операции ничего не возвращают при успехе и бросают исключение при ошибке; перезапись — только явно
+  (`overwrite=True`);
+- синхронная (`BaseSource`) и асинхронная (`BaseSourceAsync`) версии ведут себя одинаково.
 
 ---
 
@@ -72,50 +38,28 @@ NeuroCloudApiConfig (dataclass, slots=True)
 
 ### Требования
 
-- Python 3.9+
-- Poetry (для управления зависимостями) или pip
+- Python 3.10+
+- Poetry (или pip)
 
-### Установка через Poetry (рекомендуется)
-
-1. Установите Poetry, если еще не установлен:
+### Установка
 
 ```bash
-# Linux/macOS
-curl -sSL https://install.python-poetry.org | python3 -
-
-# Windows (PowerShell)
-(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+poetry install            # зависимости библиотеки
+poetry install --with dev # + pytest, mypy, black, flake8
 ```
 
-2. Установите зависимости:
+Как зависимость другого проекта:
 
 ```bash
-poetry install
+pip install "git+https://github.com/omigutin/neuro_cloud_api.git@main"
 ```
 
-3. Активируйте виртуальное окружение:
+`yadisk` ставится с extras `sync-defaults` и `async-defaults` (requests для sync, httpx + aiofiles для
+async) — без них клиенты `yadisk` не создаются.
 
-```bash
-poetry shell
-```
+### Переменные окружения для примеров и e2e-тестов
 
-Или запускайте команды через Poetry:
-
-```bash
-poetry run python run_sync.py
-```
-
-### Установка через pip
-
-```bash
-pip install yadisk python-dotenv
-```
-
-**Примечание:** `httpx` устанавливается автоматически с `yadisk` для асинхронных операций.
-
-### Настройка переменных окружения
-
-Создайте файл `.env` в корне проекта:
+Файл `.env` в корне проекта:
 
 ```env
 YADISK_TOKEN=your_yandex_disk_token_here
@@ -126,837 +70,307 @@ YADISK_TOKEN=your_yandex_disk_token_here
 ## Структура проекта
 
 ```
-yadisk_api/
-├── src/
-│   └── neuro_cloud_api/
-│       ├── __init__.py                 # Тонкий реэкспорт из api.py
-│       ├── api.py                       # Публичный API контракт библиотеки
-│       ├── errors.py                    # Публичные исключения
-│       ├── sources/
-│       │   ├── __init__.py
-│       │   ├── base_source.py          # Базовый абстрактный класс (sync)
-│       │   ├── base_source_async.py    # Базовый абстрактный класс (async)
-│       │   ├── yadisk_source.py        # Синхронная реализация для Яндекс.Диска
-│       │   ├── yadisk_source_async.py  # Асинхронная реализация для Яндекс.Диска
-│       │   ├── source_factory.py       # Фабрика для создания источников
-│       │   ├── source_type.py          # Enum типов источников
-│       │   ├── ggldisk_source.py       # Заглушка для Google Drive
-│       │   └── s3_source.py            # Заглушка для S3
-│       └── settings/
-│           └── config.py               # Конфигурация NeuroCloudApiConfig
+neuro_cloud_api/
+├── src/neuro_cloud_api/
+│   ├── __init__.py              # реэкспорт из api.py
+│   ├── api.py                   # публичный API библиотеки
+│   ├── errors.py                # иерархия исключений
+│   ├── models.py                # StorageItem, StorageItemKind
+│   ├── paths.py                 # контракт remote-путей
+│   ├── settings/config.py       # NeuroCloudApiConfig
+│   └── sources/
+│       ├── base_source.py       # контракт sync-источника
+│       ├── base_source_async.py # контракт async-источника
+│       ├── _yadisk_common.py    # общее для sync/async Яндекс.Диска: пути, модель, ошибки
+│       ├── yadisk_source.py
+│       ├── yadisk_source_async.py
+│       ├── ggldisk_source.py    # заглушка Google Drive
+│       ├── s3_source.py         # заглушка S3
+│       ├── source_factory.py
+│       └── source_type.py
 ├── tests/
-│   ├── unit/                           # Юнит-тесты
-│   ├── integration/                    # Интеграционные тесты
-│   ├── e2e/                            # End-to-end тесты
-│   └── examples/
-│       ├── example_sync.py              # Функция синхронного примера
-│       └── example_async.py             # Функция асинхронного примера
-├── run_sync.py                          # Точка входа для синхронного примера
-├── run_async.py                         # Точка входа для асинхронного примера
-├── docs/
-│   └── DOCUMENTATION.md                 # Полная документация
-├── pyproject.toml                      # Конфигурация Poetry
-├── poetry.lock                         # Файл блокировки зависимостей (генерируется автоматически)
-├── README.md                           # Краткое описание и инструкции
-└── LICENSE                             # Лицензия
+│   ├── unit/                    # без сети
+│   ├── e2e/                     # live smoke против Яндекс.Диска (opt-in, нужен YADISK_TOKEN)
+│   └── examples/                # примеры (запуск: run_sync.py / run_async.py)
+└── docs/DOCUMENTATION.md
 ```
 
 ---
 
-## Основные компоненты
+## Контракт remote-путей
 
-### 1. BaseSource (Базовый абстрактный класс для синхронных операций)
+Все публичные операции принимают и возвращают **канонические** пути (`neuro_cloud_api.paths`):
 
-**Файл:** `src/neuro_cloud_api/sources/base_source.py`
+- путь абсолютный и начинается с `/`; корень — `/`;
+- разделитель — `/`; обратный слэш `\` не принимается;
+- префикс провайдера (`disk:/...`) не принимается на входе и не возвращается наружу;
+- повторные `/`, сегменты `.` и `..` нормализуются; завершающий `/` убирается (кроме корня).
 
-Абстрактный базовый класс, определяющий синхронный интерфейс для всех источников облачных хранилищ.
-
-#### Атрибуты (приватные, доступ через @property)
-
-- `_token: str` — токен для авторизации (доступ через `token` property)
-- `_source_type: SourceType` — тип источника (доступ через `source_type` property)
-- `_client: Optional[Any]` — клиент облачного хранилища (приватный)
-- `_is_connected: bool` — статус подключения (доступ через `is_connected` property)
-
-#### Properties
-
-- `token: str` — возвращает токен для авторизации
-- `source_type: SourceType` — возвращает тип источника
-- `is_connected: bool` — возвращает статус подключения
-
-#### Абстрактные методы
-
-Все подклассы должны реализовать:
-
-- `connect() -> bool` — подключение к облачному хранилищу
-- `check_connection() -> bool` — проверка подключения
-- `list_directories(path: str = "/") -> List[str]` — получение списка директорий
-- `download_file(remote_path: str, local_path: Union[str, Path]) -> bool` — скачивание файла
-- `upload_file(local_path: Union[str, Path], remote_path: str) -> bool` — загрузка файла
-- `search_directories(name: str, path: str = "/") -> List[str]` — поиск директорий
-
-#### Методы
-
-- `disconnect()` — отключение от облачного хранилища
-
----
-
-### 2. YadiskSource (Синхронная реализация)
-
-**Файл:** `src/neuro_cloud_api/sources/yadisk_source.py`
-
-Синхронная реализация для работы с Яндекс.Диском.
-
-#### Инициализация
+Некорректный путь → `ValueError`.
 
 ```python
-source = YadiskSource(token="your_token")
-```
+from neuro_cloud_api.paths import normalize_remote_path, remote_parent, remote_name
 
-#### Методы
-
-##### `connect() -> bool`
-Подключается к Яндекс.Диску и проверяет валидность токена.
-
-##### `check_connection() -> bool`
-Проверяет валидность токена без установки соединения.
-
-##### `list_directories(path: str = "/") -> List[str]`
-Возвращает список всех директорий в указанном пути.
-
-**Пример:**
-```python
-dirs = source.list_directories("/")
-# Возвращает: ['disk:/Folder1', 'disk:/Folder2', ...]
-```
-
-##### `search_directories(name: str, path: str = "/") -> List[str]`
-Ищет директории, содержащие указанное имя (регистронезависимый поиск).
-
-**Пример:**
-```python
-found = source.search_directories("test", "/")
-# Найдет все директории с "test" в имени
-```
-
-##### `download_file(remote_path: str, local_path: Union[str, Path]) -> bool`
-Скачивает файл с Яндекс.Диска на локальный диск.
-
-**Пример:**
-```python
-source.download_file(
-    remote_path="/test_upload.txt",
-    local_path=Path("downloads/test_upload.txt")
-)
-```
-
-##### `upload_file(local_path: Union[str, Path], remote_path: str) -> bool`
-Загружает файл на Яндекс.Диск.
-
-**Особенности:**
-- Автоматически создает необходимые директории на диске
-- Проверяет существование локального файла
-
-**Пример:**
-```python
-source.upload_file(
-    local_path="test_upload.txt",
-    remote_path="/test_upload.txt"
-)
-```
-
-##### `_ensure_directory_exists(remote_path: str) -> None`
-Приватный метод для рекурсивного создания директорий на Яндекс.Диске.
-
----
-
-### 3. BaseSourceAsync (Базовый абстрактный класс для асинхронных операций)
-
-**Файл:** `src/neuro_cloud_api/sources/base_source_async.py`
-
-Абстрактный базовый класс, определяющий асинхронный интерфейс для всех источников облачных хранилищ. Все методы являются асинхронными и должны вызываться с `await`.
-
-#### Атрибуты (приватные, доступ через @property)
-
-Аналогично `BaseSource`, но все методы асинхронные.
-
----
-
-### 4. YadiskSourceAsync (Асинхронная реализация)
-
-**Файл:** `src/neuro_cloud_api/sources/yadisk_source_async.py`
-
-Асинхронная реализация для работы с Яндекс.Диском. Наследуется от `BaseSourceAsync`, все методы являются асинхронными и должны вызываться с `await`.
-
-#### Инициализация
-
-```python
-source = YadiskSourceAsync(token="your_token")
-```
-
-#### Методы
-
-Все методы аналогичны синхронной версии, но являются асинхронными:
-
-- `async def connect() -> bool`
-- `async def check_connection() -> bool`
-- `async def list_directories(path: str = "/") -> List[str]`
-- `async def search_directories(name: str, path: str = "/") -> List[str]`
-- `async def download_file(...) -> bool`
-- `async def upload_file(...) -> bool`
-- `async def disconnect()`
-
-#### Особенности асинхронной версии
-
-1. **Производительность** — асинхронная версия может быть быстрее при работе с множественными операциями благодаря параллельной обработке.
-
-2. **Неблокирующие операции** — все операции не блокируют выполнение программы, что позволяет обрабатывать другие задачи во время ожидания ответа от API.
-
-**Пример использования:**
-```python
-import asyncio
-
-async def main():
-    source = YadiskSourceAsync(token="your_token")
-    await source.connect()
-    dirs = await source.list_directories("/")
-    await source.disconnect()
-
-asyncio.run(main())
+normalize_remote_path("//a/./b/../c/")  # "/a/c"
+remote_parent("/a/c")                   # "/a"
+remote_name("/a/c")                     # "c"
 ```
 
 ---
 
-### 5. SourceFactory (Фабрика источников)
+## Модель StorageItem
 
-**Файл:** `src/neuro_cloud_api/sources/source_factory.py`
+`StorageItem` (frozen dataclass) — файл или каталог хранилища:
 
-Реализует паттерн Factory для автоматического создания источников на основе типа.
+| Поле | Тип | Описание |
+|---|---|---|
+| `name` | `str` | имя последнего сегмента |
+| `path` | `str` | канонический путь |
+| `kind` | `StorageItemKind` | `FILE` или `DIRECTORY` |
+| `size` | `Optional[int]` | размер в байтах |
+| `modified_at`, `created_at` | `Optional[datetime]` | время изменения / создания |
+| `checksum`, `checksum_algorithm` | `Optional[str]` | контрольная сумма и алгоритм (для Яндекс.Диска — md5 файлов); если провайдер её не отдаёт — оба `None` |
+| `mime_type` | `Optional[str]` | MIME-тип |
 
-#### Методы
+Свойства `is_file` и `is_dir`. Provider-specific поля (revision, ETag и т.п.) в модель не входят.
 
-##### `parse(source_type: Union[str, SourceType, NeuroCloudApiConfig]) -> SourceType`
+---
 
-Определяет тип источника из различных входных данных.
+## Источники: BaseSource и BaseSourceAsync
 
-**Параметры:**
-- `source_type` — может быть:
-  - строкой: `"yandex_disk"`, `"google_drive"`, `"s3"`
-  - `SourceType` enum
-  - `NeuroCloudApiConfig` объект
+`BaseSource` — синхронный контракт, `BaseSourceAsync` — асинхронный (те же методы — корутины,
+`iter_items` — async-генератор). Реализации: `YadiskSource`, `YadiskSourceAsync`.
 
-**Возвращает:** `SourceType` enum
+### Жизненный цикл
 
-**Примеры:**
+| Метод | Поведение |
+|---|---|
+| `connect()` | проверяет доступ; ошибка → исключение (`CloudAuthenticationError`, `CloudConnectionError`, …) |
+| `check_connection() -> bool` | health-check: `True`/`False`, **не бросает** |
+| `disconnect()` | закрывает клиент; ошибка закрытия пишется в лог и не бросается |
+| `with` / `async with` | `connect()` на входе, `disconnect()` на выходе |
+
+Свойства: `token`, `source_type`, `is_connected`.
+
+### Метаданные и обход
+
+| Метод | Поведение |
+|---|---|
+| `exists(path) -> bool` | есть ли объект |
+| `get_item(path) -> StorageItem` | метаданные; нет объекта → `RemoteNotFoundError` |
+| `iter_items(path="/")` | ленивый обход содержимого каталога (не рекурсивно) |
+| `list_items(path="/") -> list[StorageItem]` | то же, списком |
+
+### Операции
+
+| Метод | Поведение |
+|---|---|
+| `mkdir(path, *, parents=True, exist_ok=True)` | создать каталог; при `exist_ok=False` и существующем каталоге → `RemoteExistsError` |
+| `upload_file(local_path, remote_path, *, overwrite=False, create_parents=True)` | загрузить файл; remote существует и `overwrite=False` → `RemoteExistsError`; нет локального файла → `LocalNotFoundError` |
+| `download_file(remote_path, local_path, *, overwrite=False, create_parents=True)` | скачать файл; локальный файл существует и `overwrite=False` → `LocalExistsError` |
+| `delete(path, *, recursive=False)` | удалить; непустой каталог без `recursive=True` → `RemoteConflictError` |
+| `move(source, destination, *, overwrite=False)` | переместить; `destination` — полный целевой путь |
+| `copy(source, destination, *, overwrite=False)` | скопировать; `destination` — полный целевой путь |
+
+`create_parents=True` создаёт недостающие каталоги: на remote — при `upload_file`, локально — при
+`download_file`.
+
+### Устаревшие методы
+
+`list_directories(path)` и `search_directories(name, path)` оставлены для совместимости, выдают
+`DeprecationWarning` и будут удалены. Замена — `list_items` с фильтрацией:
+
 ```python
-# Из строки
-source_type = SourceFactory.parse("yandex_disk")
-
-# Из enum
-source_type = SourceFactory.parse(SourceType.YANDEX_DISK)
-
-# Из конфига
-config = NeuroCloudApiConfig(...)
-source_type = SourceFactory.parse(config)
-```
-
-##### `create_source(token: Optional[str] = None, source_type: Optional[Union[str, SourceType, NeuroCloudApiConfig]] = None, config: Optional[NeuroCloudApiConfig] = None) -> BaseSource`
-
-Создает синхронный источник облачного хранилища.
-
-**Параметры:**
-- `token` — токен для авторизации (опционально, если передан `config`)
-- `source_type` — тип источника (строка, SourceType или NeuroCloudApiConfig)
-- `config` — конфигурация (если передан, `source_type` и `token` игнорируются)
-
-**Возвращает:** Экземпляр соответствующего источника (BaseSource)
-
-**Примеры:**
-```python
-# Через token и SourceType
-source = SourceFactory.create_source(
-    token="your_token",
-    source_type=SourceType.YANDEX_DISK
-)
-
-# Через строку
-source = SourceFactory.create_source(
-    token="your_token",
-    source_type="yandex_disk"
-)
-
-# Через конфиг
-config = NeuroCloudApiConfig(
-    token="your_token",
-    source_type=SourceType.YANDEX_DISK,
-    home_folder="/",
-    async_enabled=False
-)
-source = SourceFactory.create_source(config=config)
-```
-
-##### `create_async_source(...) -> BaseSourceAsync`
-
-Аналогично `create_source()`, но создает асинхронный источник.
-
-**Возвращает:** Экземпляр соответствующего асинхронного источника (BaseSourceAsync)
-
-**Примеры:**
-```python
-# Через token и SourceType
-source = SourceFactory.create_async_source(
-    token="your_token",
-    source_type=SourceType.YANDEX_DISK
-)
-
-# Через строку
-source = SourceFactory.create_async_source(
-    token="your_token",
-    source_type="yandex_disk"
-)
-```
-
-##### `create_source_from_config(config: NeuroCloudApiConfig) -> Union[BaseSource, BaseSourceAsync]`
-
-Создает источник на основе конфигурации. Автоматически выбирает синхронный или асинхронный источник в зависимости от параметра `async_enabled` в конфиге.
-
-**Возвращает:** Экземпляр соответствующего источника (BaseSource или BaseSourceAsync)
-
-**Пример:**
-```python
-config = NeuroCloudApiConfig(
-    token="your_token",
-    source_type=SourceType.YANDEX_DISK,
-    home_folder="/",
-    async_enabled=True  # Создаст YadiskSourceAsync
-)
-source = SourceFactory.create_source_from_config(config)
+dirs = [item.path for item in source.list_items("/") if item.is_dir]
+found = [item.path for item in source.list_items("/") if item.is_dir and "test" in item.name.lower()]
 ```
 
 ---
 
-### 6. SourceType (Enum типов источников)
+## Фабрика, SourceType, конфигурация
 
-**Файл:** `src/neuro_cloud_api/sources/source_type.py`
+### SourceType
 
-Перечисление типов облачных хранилищ.
+`YANDEX_DISK = "yandex_disk"`, `GOOGLE_DRIVE = "google_drive"` (не реализован), `S3 = "s3"`
+(не реализован). `SourceType.from_string()` принимает `"yandex_disk"`, `"YANDEX_DISK"`, `"yandex-disk"`,
+`"yandex disk"`; свойство `is_supported` — реализован ли тип.
 
-#### Значения
-
-- `YANDEX_DISK = "yandex_disk"` — Яндекс.Диск
-- `GOOGLE_DRIVE = "google_drive"` — Google Drive (не реализован)
-- `S3 = "s3"` — Amazon S3 (не реализован)
-
-#### Методы
-
-##### `from_string(value: str) -> SourceType`
-
-Преобразует строку в `SourceType`. Поддерживает различные форматы:
-- `"yandex_disk"`, `"YANDEX_DISK"`, `"yandex-disk"`, `"yandex disk"`
-
-**Пример:**
-```python
-source_type = SourceType.from_string("yandex_disk")
-```
-
-##### `is_supported` (property)
-
-Проверяет, поддерживается ли тип источника.
-
-**Пример:**
-```python
-if SourceType.YANDEX_DISK.is_supported:
-    print("Поддерживается")
-```
-
----
-
-### 7. NeuroCloudApiConfig (Конфигурация)
-
-**Файл:** `src/neuro_cloud_api/settings/config.py`
-
-Dataclass для хранения конфигурации библиотеки. Использует `slots=True` для оптимизации памяти.
-
-#### Поля
-
-- `token: str` — токен для подключения к облачному сервису
-- `source_type: SourceType` — тип сервиса (SourceType enum, не общий Enum)
-- `home_folder: str` — корневая папка по умолчанию (например, "MATLLER")
-- `async_enabled: bool = True` — использовать асинхронный источник
-
-#### Пример
+### SourceFactory
 
 ```python
-from src.neuro_cloud_api.settings.config import NeuroCloudApiConfig
-from src.neuro_cloud_api.sources.source_type import SourceType
+from neuro_cloud_api import NeuroCloudApiConfig, SourceFactory, SourceType
 
-config = NeuroCloudApiConfig(
-    token="your_token",
-    source_type=SourceType.YANDEX_DISK,
-    home_folder="/MATLLER",
-    async_enabled=True
-)
+source = SourceFactory.create_source(token="...", source_type=SourceType.YANDEX_DISK)      # sync
+source = SourceFactory.create_source(token="...", source_type="yandex_disk")                # из строки
+source = SourceFactory.create_async_source(token="...", source_type=SourceType.YANDEX_DISK)
+
+config = NeuroCloudApiConfig(token="...", source_type=SourceType.YANDEX_DISK, async_enabled=True)
+source = SourceFactory.create_source_from_config(config)  # sync или async по async_enabled
 ```
 
----
-
-## API Reference
-
-### Импорт основных классов
-
-Все публичные классы, интерфейсы и исключения экспортируются через `api.py` и доступны через главный пакет:
-
-```python
-from src.neuro_cloud_api import (
-    # Интерфейсы
-    BaseSource,
-    BaseSourceAsync,
-    # Реализации
-    YadiskSource,
-    YadiskSourceAsync,
-    # Factory и типы
-    SourceFactory,
-    SourceType,
-    # Конфигурация
-    NeuroCloudApiConfig,
-    # Исключения
-    NeuroCloudAPIError,
-    ConnectionError,
-    AuthenticationError,
-    FileNotFoundError,
-    UploadError,
-    DownloadError,
-    SourceNotImplementedError,
-)
-```
-
-### Полный список методов BaseSource
-
-| Метод | Синхронный | Асинхронный | Описание |
-|-------|-----------|-------------|----------|
-| `connect()` | ✅ | ✅ | Подключение к хранилищу |
-| `check_connection()` | ✅ | ✅ | Проверка подключения |
-| `list_directories(path)` | ✅ | ✅ | Список директорий |
-| `search_directories(name, path)` | ✅ | ✅ | Поиск директорий |
-| `download_file(remote, local)` | ✅ | ✅ | Скачивание файла |
-| `upload_file(local, remote)` | ✅ | ✅ | Загрузка файла |
-| `disconnect()` | ✅ | ✅ | Отключение |
-
----
-
-## Примеры использования
-
-### Пример 1: Базовое использование (синхронно)
-
-```python
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-from src.neuro_cloud_api import YadiskSource
-
-load_dotenv()
-token = os.getenv('YADISK_TOKEN')
-
-# Создание источника
-source = YadiskSource(token=token)
-
-# Подключение
-if source.connect():
-    # Список директорий
-    dirs = source.list_directories("/")
-    print(f"Найдено директорий: {len(dirs)}")
-    
-    # Поиск директорий
-    found = source.search_directories("test", "/")
-    
-    # Загрузка файла
-    source.upload_file("local_file.txt", "/remote_file.txt")
-    
-    # Скачивание файла
-    source.download_file("/remote_file.txt", Path("downloads/local_file.txt"))
-    
-    # Отключение
-    source.disconnect()
-```
-
-### Пример 2: Асинхронное использование
-
-```python
-import os
-import asyncio
-from pathlib import Path
-from dotenv import load_dotenv
-from src.neuro_cloud_api import YadiskSourceAsync
-
-load_dotenv()
-token = os.getenv('YADISK_TOKEN')
-
-async def main():
-    source = YadiskSourceAsync(token=token)
-    
-    if await source.connect():
-        # Асинхронные операции
-        dirs = await source.list_directories("/")
-        found = await source.search_directories("test", "/")
-        
-        await source.upload_file("local_file.txt", "/remote_file.txt")
-        await source.download_file("/remote_file.txt", Path("downloads/local_file.txt"))
-        
-        await source.disconnect()
-
-asyncio.run(main())
-```
-
-### Пример 3: Использование Factory
-
-```python
-import os
-from dotenv import load_dotenv
-from src.neuro_cloud_api import SourceFactory, SourceType
-
-load_dotenv()
-token = os.getenv('YADISK_TOKEN')
-
-# Создание через Factory
-source = SourceFactory.create_source(
-    token=token,
-    source_type=SourceType.YANDEX_DISK
-)
-
-# Или через строку
-source = SourceFactory.create_source(
-    token=token,
-    source_type="yandex_disk"
-)
-
-# Или через конфиг
-from src.neuro_cloud_api.settings.config import NeuroCloudApiConfig
-
-config = NeuroCloudApiConfig(
-    token=token,
-    source_type=SourceType.YANDEX_DISK,
-    home_folder="/",
-    async_enabled=False
-)
-source = SourceFactory.create_source_from_config(config)
-```
-
-### Пример 4: Загрузка и скачивание множества файлов
-
-#### Синхронная версия (последовательно)
-
-```python
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-from src.neuro_cloud_api import YadiskSource
-
-load_dotenv()
-source = YadiskSource(token=os.getenv('YADISK_TOKEN'))
-source.connect()
-
-# Список файлов для загрузки
-files_to_upload = [
-    Path("video1.mp4"),
-    Path("video2.mp4"),
-    # ... еще файлы
-]
-
-# Последовательная загрузка
-for local_file in files_to_upload:
-    remote_path = f"/videos/{local_file.name}"
-    source.upload_file(local_path=local_file, remote_path=remote_path)
-
-# Последовательное скачивание
-for local_file in files_to_upload:
-    remote_path = f"/videos/{local_file.name}"
-    download_path = Path("downloads") / local_file.name
-    source.download_file(remote_path=remote_path, local_path=download_path)
-
-source.disconnect()
-```
-
-#### Асинхронная версия (параллельно)
-
-```python
-import os
-import asyncio
-from pathlib import Path
-from dotenv import load_dotenv
-from src.neuro_cloud_api import YadiskSourceAsync
-
-load_dotenv()
-
-async def main():
-    source = YadiskSourceAsync(token=os.getenv('YADISK_TOKEN'))
-    await source.connect()
-    
-    # Список файлов для загрузки
-    files_to_upload = [
-        Path("video1.mp4"),
-        Path("video2.mp4"),
-        # ... еще файлы
-    ]
-    
-    # Параллельная загрузка
-    upload_tasks = [
-        source.upload_file(
-            local_path=file,
-            remote_path=f"/videos/{file.name}"
-        )
-        for file in files_to_upload
-    ]
-    await asyncio.gather(*upload_tasks)
-    
-    # Параллельное скачивание
-    download_tasks = [
-        source.download_file(
-            remote_path=f"/videos/{file.name}",
-            local_path=Path("downloads") / file.name
-        )
-        for file in files_to_upload
-    ]
-    await asyncio.gather(*download_tasks)
-    
-    await source.disconnect()
-
-asyncio.run(main())
-```
-
-### Пример 5: Замер производительности
-
-См. файлы `run_sync.py` и `run_async.py` (точки входа) или `tests/examples/example_sync.py` и `tests/examples/example_async.py` (функции примеров) для полных примеров с замерами времени выполнения операций, включая тесты с множественными файлами (15 видео файлов по 1 MB).
-
-**Запуск:**
-```bash
-# Синхронная версия
-poetry run python run_sync.py
-
-# Асинхронная версия
-poetry run python run_async.py
-```
-
-### Пример 5: Обработка исключений
-
-```python
-from src.neuro_cloud_api import (
-    YadiskSource,
-    ConnectionError,
-    AuthenticationError,
-    UploadError,
-    DownloadError,
-)
-
-try:
-    source = YadiskSource(token="your_token")
-    source.connect()
-    source.upload_file("file.txt", "/file.txt")
-except AuthenticationError:
-    print("Неверный токен")
-except ConnectionError as e:
-    print(f"Ошибка подключения: {e}")
-except UploadError as e:
-    print(f"Ошибка загрузки: {e}")
-```
-
----
-
-## Паттерны проектирования
-
-### 1. Abstract Factory Pattern
-
-Базовые классы `BaseSource` и `BaseSourceAsync` определяют интерфейсы, которые реализуют конкретные классы (`YadiskSource`, `YadiskSourceAsync`).
-
-**Преимущества:**
-- Единый интерфейс для всех источников (sync и async разделены)
-- Легко добавить новые типы хранилищ
-- Полиморфизм
-- Четкое разделение синхронных и асинхронных контрактов
-
-**Особенность:** Синхронные и асинхронные интерфейсы разделены на отдельные базовые классы (`BaseSource` и `BaseSourceAsync`), что предотвращает смешивание sync и async методов.
-
-### 2. Factory Pattern
-
-Класс `SourceFactory` инкапсулирует логику создания объектов источников.
-
-**Преимущества:**
-- Скрывает детали создания объектов
-- Централизованная логика выбора источника
-- Легко расширять новыми типами
-
-### 3. Strategy Pattern
-
-Различные реализации (`YadiskSource`, `YadiskSourceAsync`) представляют разные стратегии работы с хранилищем.
-
-**Преимущества:**
-- Возможность выбора между синхронным и асинхронным подходом
-- Легко переключаться между стратегиями
-
-### 4. Публичный API через api.py
-
-Все публичные классы, интерфейсы и исключения экспортируются через `api.py`, а `__init__.py` является тонким реэкспортом. Это обеспечивает четкий контракт библиотеки и упрощает поддержку.
-
----
-
-## Производительность
-
-### Сравнение синхронной и асинхронной версий
-
-На основе тестов с типичными операциями:
-
-#### Одиночные операции
-
-| Операция | Синхронная версия | Асинхронная версия | Примечание |
-|----------|------------------|-------------------|------------|
-| Список директорий (30 шт) | ~0.97 сек | ~0.90 сек | Небольшое преимущество у async |
-| Поиск директорий | ~1.07 сек | ~1.48 сек | Синхронная версия быстрее для простых операций |
-| Загрузка 1 файла (1 MB) | ~0.40 сек | ~0.43 сек | Примерно одинаково |
-| Скачивание 1 файла (1 MB) | ~0.43 сек | ~0.54 сек | Примерно одинаково |
-
-#### Множественные операции (15 видео файлов по 1 MB каждый)
-
-| Операция | Синхронная версия (последовательно) | Асинхронная версия (параллельно) | Ускорение |
-|----------|-------------------------------------|----------------------------------|-----------|
-| Загрузка 15 файлов | ~6.0-8.0 сек | ~2.5-4.0 сек | **2-3x быстрее** |
-| Среднее время на файл (загрузка) | ~0.40-0.53 сек/файл | ~0.17-0.27 сек/файл | **~2x быстрее** |
-| Скачивание 15 файлов | ~6.5-9.0 сек | ~2.8-4.5 сек | **2-3x быстрее** |
-| Среднее время на файл (скачивание) | ~0.43-0.60 сек/файл | ~0.19-0.30 сек/файл | **~2x быстрее** |
-
-**Примечание:** Результаты могут варьироваться в зависимости от скорости интернет-соединения, нагрузки на сервер и размера файлов.
-
-### Выводы
-
-1. **Для простых операций** (загрузка/скачивание одного файла, список директорий) разница между синхронной и асинхронной версиями незначительна.
-
-2. **Асинхронная версия показывает значительное преимущество** при работе с множеством файлов:
-   - Параллельная обработка позволяет загружать/скачивать несколько файлов одновременно
-   - Ускорение в 2-3 раза при работе с 10-20 файлами
-   - Эффективность растет с увеличением количества файлов
-
-3. **Асинхронная версия полезна** когда:
-   - Нужно обрабатывать множество операций параллельно
-   - Работаете в асинхронном приложении (например, веб-сервер)
-   - Хотите неблокирующие операции
-   - Работаете с большим количеством файлов (видео, изображения, документы)
-
-4. **Синхронная версия подходит** для:
-   - Простых скриптов
-   - Последовательной обработки
-   - Когда асинхронность не нужна
-   - Работы с небольшим количеством файлов
-
-### Пример тестирования множественных файлов
-
-Для запуска тестов с множественными файлами используйте примеры:
-
-```bash
-# Синхронная версия (последовательная загрузка/скачивание)
-poetry run python run_sync.py
-
-# Асинхронная версия (параллельная загрузка/скачивание)
-poetry run python run_async.py
-```
-
-**Примечание:** Файлы `run_sync.py` и `run_async.py` в корне проекта являются точками входа, которые импортируют функции из `tests/examples/example_sync.py` и `tests/examples/example_async.py`. Это позволяет использовать примеры как напрямую (через точки входа), так и импортировать функции в других скриптах.
-
-Примеры автоматически создают 15 тестовых видео файлов (по 1 MB каждый), загружают и скачивают их, выводя детальную статистику по времени выполнения.
-
----
-
-## Расширение библиотеки
-
-### Добавление нового типа источника
-
-1. **Создайте класс**, наследующийся от `BaseSource` (для sync) или `BaseSourceAsync` (для async):
-
-```python
-from .base_source import BaseSource
-from .source_type import SourceType
-
-class NewSource(BaseSource):
-    def __init__(self, token: str):
-        super().__init__(token, source_type=SourceType.NEW_SOURCE)
-        self._client = None  # Инициализация клиента
-    
-    def connect(self) -> bool:
-        # Реализация подключения
-        pass
-    
-    # Реализация остальных абстрактных методов
-```
-
-Для асинхронной версии используйте `BaseSourceAsync` и `async def` методы.
-
-2. **Добавьте тип в SourceType enum**:
-
-```python
-class SourceType(Enum):
-    # ...
-    NEW_SOURCE = "new_source"
-```
-
-3. **Обновите SourceFactory**:
-
-```python
-def create_source(...):
-    # ...
-    elif source_type_enum == SourceType.NEW_SOURCE:
-        return NewSource(token=token)
-```
+`SourceFactory.parse()` приводит строку, `SourceType` или `NeuroCloudApiConfig` к `SourceType`. Для
+Google Drive и S3 фабрика сразу бросает `SourceNotImplementedError`.
+
+### NeuroCloudApiConfig
+
+| Поле | Описание |
+|---|---|
+| `token: str` | токен облачного сервиса |
+| `source_type: SourceType` | тип сервиса |
+| `async_enabled: bool = True` | создавать асинхронный источник |
+| `home_folder: Optional[str] = None` | **устарело**, не используется и не добавляется к путям; будет удалено |
 
 ---
 
 ## Обработка ошибок
 
-Библиотека использует иерархию пользовательских исключений, определенных в `errors.py`:
+Имена исключений не перекрывают встроенные исключения Python.
 
-### Иерархия исключений
+```
+NeuroCloudError
+├── CloudAuthenticationError     # неверный/протухший токен
+├── CloudConnectionError         # транспорт: DNS, refused/reset, socket, timeout
+├── CloudRateLimitError          # лимит запросов/трафика (HTTP 429 и аналоги)
+├── RemoteNotFoundError          # remote-объект не найден
+├── RemoteConflictError          # конфликт состояния remote
+│   └── RemoteExistsError        # remote-объект уже существует
+├── RemotePermissionError        # нет прав на remote
+├── LocalFileError               # ошибка локальной ФС
+│   ├── LocalNotFoundError       # нет локального источника (upload)
+│   ├── LocalConflictError
+│   │   └── LocalExistsError     # локальный destination существует (download)
+│   └── LocalPermissionError     # нет прав локально
+├── ProviderError                # 5xx и прочие неклассифицированные ошибки провайдера
+└── SourceNotImplementedError    # источник ещё не реализован (также NotImplementedError)
+```
 
-- `NeuroCloudAPIError` — базовое исключение для всех ошибок библиотеки
-  - `ConnectionError` — ошибка подключения к облачному хранилищу
-  - `AuthenticationError` — ошибка аутентификации (неверный токен)
-  - `FileNotFoundError` — файл не найден в облачном хранилище
-  - `UploadError` — ошибка загрузки файла
-  - `DownloadError` — ошибка скачивания файла
-  - `SourceNotImplementedError` — источник еще не реализован
-
-### Использование
-
-Все методы выбрасывают соответствующие исключения при ошибках. Рекомендуется использовать try/except для обработки:
+Исходное исключение провайдера доступно через `__cause__`.
 
 ```python
-from src.neuro_cloud_api import (
-    YadiskSource,
-    ConnectionError,
-    AuthenticationError,
-    UploadError,
+from neuro_cloud_api import (
+    CloudAuthenticationError, CloudConnectionError, NeuroCloudError, RemoteExistsError, YadiskSource,
 )
 
 try:
-    source = YadiskSource(token="token")
-    source.connect()
-    source.upload_file("file.txt", "/file.txt")
-except AuthenticationError:
+    with YadiskSource(token="...") as source:
+        source.upload_file("file.txt", "/backup/file.txt")
+except CloudAuthenticationError:
     print("Неверный токен")
-except ConnectionError as e:
-    print(f"Ошибка подключения: {e.message}")
-except UploadError as e:
-    print(f"Ошибка загрузки: {e.message}")
+except RemoteExistsError:
+    print("Файл уже есть; для перезаписи — overwrite=True")
+except CloudConnectionError as e:
+    print(f"Сеть недоступна: {e}")
+except NeuroCloudError as e:
+    print(f"Ошибка хранилища: {e}")
 ```
 
 ---
 
-## Лицензия
+## Примеры использования
 
-См. файл `LICENSE` в корне проекта.
+### Синхронно
+
+```python
+import os
+from pathlib import Path
+
+from neuro_cloud_api import YadiskSource
+
+with YadiskSource(token=os.environ["YADISK_TOKEN"]) as source:
+    for item in source.list_items("/"):
+        print(item.kind.value, item.path, item.size)
+    source.upload_file("report.xlsx", "/Reports/2026/report.xlsx", overwrite=True)
+    source.download_file("/Reports/2026/report.xlsx", Path("downloads/report.xlsx"), overwrite=True)
+    source.move("/Reports/2026/report.xlsx", "/Archive/report.xlsx")
+```
+
+### Асинхронно, параллельная загрузка
+
+```python
+import asyncio
+import os
+from pathlib import Path
+
+from neuro_cloud_api import YadiskSourceAsync
+
+
+async def main() -> None:
+    files = sorted(Path("videos").glob("*.mp4"))
+    async with YadiskSourceAsync(token=os.environ["YADISK_TOKEN"]) as source:
+        await source.mkdir("/Videos")
+        await asyncio.gather(*(source.upload_file(f, f"/Videos/{f.name}", overwrite=True) for f in files))
+        async for item in source.iter_items("/Videos"):
+            print(item.name, item.checksum)
+
+
+asyncio.run(main())
+```
+
+### Готовые примеры
+
+```bash
+poetry run python run_sync.py   # последовательная загрузка/скачивание 15 файлов
+poetry run python run_async.py  # то же параллельно
+```
+
+Точки входа импортируют функции из `tests/examples/example_sync.py` и `tests/examples/example_async.py`.
 
 ---
 
-## Поддержка
+## Миграция с 1.0
 
-Для вопросов и предложений создайте issue в репозитории проекта.
+| Было (1.0) | Стало (0.2) |
+|---|---|
+| `NeuroCloudAPIError` | `NeuroCloudError` |
+| `AuthenticationError` | `CloudAuthenticationError` |
+| `ConnectionError` | `CloudConnectionError` (только сеть) или конкретный класс |
+| `FileNotFoundError` | `RemoteNotFoundError` / `LocalNotFoundError` |
+| `UploadError`, `DownloadError` | конкретные классы иерархии; общий — `NeuroCloudError` |
+| `connect() -> bool` | `connect() -> None`, ошибка — исключение |
+| `check_connection()` бросал исключения | возвращает `True`/`False`, не бросает |
+| `upload_file`/`download_file` `-> bool`, молча перезаписывали | `-> None`, перезапись только при `overwrite=True` |
+| пути вида `disk:/Folder` | канонические `/Folder` |
+| `list_directories`, `search_directories` | `list_items` / `iter_items` (старые — deprecated) |
+| `NeuroCloudApiConfig.home_folder` обязателен | необязателен и не используется |
+| импорт `from src.neuro_cloud_api import ...` | `from neuro_cloud_api import ...` |
+
+Версия понижена до 0.2.0: публичный API ещё может меняться.
 
 ---
 
-**Версия документации:** 2.0  
-**Дата последнего обновления:** 2024
+## Производительность
+
+Замеры примеров (`run_sync.py` / `run_async.py`), 15 файлов по 1 MB:
+
+| Операция | Sync (последовательно) | Async (параллельно) |
+|---|---|---|
+| Загрузка 15 файлов | ~6.0–8.0 сек | ~2.5–4.0 сек |
+| Скачивание 15 файлов | ~6.5–9.0 сек | ~2.8–4.5 сек |
+
+Одиночные операции (список каталога, загрузка/скачивание одного файла) в обеих версиях занимают
+~0.4–1 сек. Async выигрывает только на множестве параллельных операций. Результаты зависят от сети и
+нагрузки на сервер.
+
+---
+
+## Расширение библиотеки
+
+1. Унаследуйте `BaseSource` (и/или `BaseSourceAsync`) и реализуйте все абстрактные методы контракта:
+   `connect`, `disconnect`, `check_connection`, `exists`, `get_item`, `iter_items`, `mkdir`,
+   `upload_file`, `download_file`, `delete`, `move`, `copy`.
+2. Нормализуйте входные пути через `normalize_remote_path`, отдавайте наружу канонические пути и
+   `StorageItem`, транслируйте ошибки провайдера в иерархию `errors.py`. Общую для sync и async логику
+   держите в одном модуле (как `_yadisk_common.py`).
+3. Добавьте значение в `SourceType` и ветку в `SourceFactory`.
+4. Покройте трансляцию ошибок и маппинг модели юнит-тестами (см. `tests/unit/test_yadisk_common.py`).
+
+---
+
+## Тесты
+
+```bash
+poetry run pytest                       # юнит-тесты; e2e пропускаются без токена
+$env:YADISK_TOKEN = "<token>"; poetry run pytest tests/e2e -v   # live smoke (PowerShell)
+```
+
+e2e работает только внутри `/NeuroCloudApiTests` на Диске и удаляет за собой созданное.

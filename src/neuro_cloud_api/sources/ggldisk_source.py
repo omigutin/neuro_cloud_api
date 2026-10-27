@@ -1,44 +1,70 @@
 from pathlib import Path
-from typing import Union, List
+from typing import Iterator, NoReturn, Union
 
 from .base_source import BaseSource
 from .source_type import SourceType
 from ..errors import SourceNotImplementedError
+from ..models import StorageItem
+
+_MESSAGE = "Google Drive источник еще не реализован"
+
+
+def _not_implemented() -> NoReturn:
+    raise SourceNotImplementedError(_MESSAGE)
 
 
 class GoogleDriveSource(BaseSource):
-    """Класс для работы с Google Drive (заглушка)."""
+    """Источник Google Drive (заглушка): контракт BaseSource, все операции бросают SourceNotImplementedError."""
 
     def __init__(self, token: str):
-        """
-        Инициализация клиента Google Drive.
-
-        Args:
-            token: OAuth-токен Google Drive
-        """
         super().__init__(token, source_type=SourceType.GOOGLE_DRIVE)
-        self._client = None
 
-    def connect(self) -> bool:
-        """Подключение к Google Drive."""
-        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+    def connect(self) -> None:
+        _not_implemented()
+
+    def disconnect(self) -> None:
+        self._is_connected = False
 
     def check_connection(self) -> bool:
-        """Проверка подключения к Google Drive."""
-        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+        return False
 
-    def list_directories(self, path: str = "/") -> List[str]:
-        """Получение списка директорий."""
-        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+    def exists(self, path: str) -> bool:
+        _not_implemented()
 
-    def download_file(self, remote_path: str, local_path: Union[str, Path]) -> bool:
-        """Скачивание файла."""
-        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+    def get_item(self, path: str) -> StorageItem:
+        _not_implemented()
 
-    def upload_file(self, local_path: Union[str, Path], remote_path: str) -> bool:
-        """Загрузка файла."""
-        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+    def iter_items(self, path: str = "/") -> Iterator[StorageItem]:
+        _not_implemented()
 
-    def search_directories(self, name: str, path: str = "/") -> List[str]:
-        """Поиск директорий по имени."""
-        raise SourceNotImplementedError("Google Drive источник еще не реализован")
+    def mkdir(self, path: str, *, parents: bool = True, exist_ok: bool = True) -> None:
+        _not_implemented()
+
+    def upload_file(
+        self,
+        local_path: Union[str, Path],
+        remote_path: str,
+        *,
+        overwrite: bool = False,
+        create_parents: bool = True,
+    ) -> None:
+        _not_implemented()
+
+    def download_file(
+        self,
+        remote_path: str,
+        local_path: Union[str, Path],
+        *,
+        overwrite: bool = False,
+        create_parents: bool = True,
+    ) -> None:
+        _not_implemented()
+
+    def delete(self, path: str, *, recursive: bool = False) -> None:
+        _not_implemented()
+
+    def move(self, source: str, destination: str, *, overwrite: bool = False) -> None:
+        _not_implemented()
+
+    def copy(self, source: str, destination: str, *, overwrite: bool = False) -> None:
+        _not_implemented()

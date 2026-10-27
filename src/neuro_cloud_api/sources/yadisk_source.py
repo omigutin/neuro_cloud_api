@@ -1,165 +1,180 @@
-import yadisk
-from pathlib import Path, PurePosixPath
-from typing import Union, List, Dict, Any
+import logging
+from pathlib import Path
 
+import yadisk
+from typing import Iterator, Union
+
+from . import _yadisk_common as _c
 from .base_source import BaseSource
 from .source_type import SourceType
-from ..errors import ConnectionError, AuthenticationError, UploadError, DownloadError
+from ..models import StorageItem
+from ..paths import normalize_remote_path, remote_parent
+from ..errors import (
+    CloudAuthenticationError,
+    RemoteConflictError,
+    RemoteExistsError,
+    LocalNotFoundError,
+    LocalExistsError,
+    LocalFileError,
+)
+
+_exc = yadisk.exceptions
+_log = logging.getLogger(__name__)
 
 
 class YadiskSource(BaseSource):
-    """Класс для работы с Яндекс.Диском."""
+    """Синхронный источник Яндекс.Диска."""
+
+    _client: yadisk.Client
 
     def __init__(self, token: str):
-        """
-        Инициализация клиента Яндекс.Диска.
-
-        Args:
-            token: OAuth-токен Яндекс.Диска
-        """
         super().__init__(token, source_type=SourceType.YANDEX_DISK)
         self._client = yadisk.Client(token=token)
 
-    def connect(self) -> bool:
-        """Подключение к Яндекс.Диску."""
+    # ── Lifecycle ───────────────────────────────────────────────────────────
+
+    def connect(self) -> None:
         try:
-            if self.check_connection():
-                self._is_connected = True
-                return True
-            else:
-                return False
-        except (AuthenticationError, ConnectionError):
-            raise
+            ok = self._client.check_token()
+        except _exc.UnauthorizedError as e:
+            raise CloudAuthenticationError("Неверный токен Яндекс.Диска") from e
         except Exception as e:
-            raise ConnectionError(f"Ошибка подключения к Яндекс.Диску: {e}") from e
+            raise _c.translate_error(e) from e
+        if not ok:
+            raise CloudAuthenticationError("Неверный токен Яндекс.Диска")
+        self._is_connected = True
 
     def check_connection(self) -> bool:
-        """Проверка подключения к Яндекс.Диску."""
         try:
-            result = self._client.check_token()
-            if result:
-                return True
-            else:
-                return False
-        except yadisk.exceptions.UnauthorizedError:
-            raise AuthenticationError("Неверный токен Яндекс.Диска")
-        except Exception as e:
-            raise ConnectionError(f"Ошибка проверки подключения: {e}") from e
+            return bool(self._client.check_token())
+        except Exception:
+            # Контракт health-check: не бросать; причину оставляем в логе.
+            _log.debug("Проверка подключения к Яндекс.Диску не прошла", exc_info=True)
+            return False
 
-    def list_directories(self, path: str = "/") -> List[str]:
-        """
-        Получение списка директорий на Яндекс.Диске.
-
-        Args:
-            path: Путь к директории
-
-        Returns:
-            Список путей к директориям
-        """
-        result = []
+    def disconnect(self) -> None:
         try:
-            for item in self._client.listdir(path):
-                if not isinstance(item, dict):
-                    continue
-                if item.get("type") == "dir":
-                    result.append(item.get("path", ""))
-        except Exception as e:
-            raise ConnectionError(f"Ошибка получения списка директорий {path}: {e}") from e
-        return result
+            self._client.close()
+        except Exception:
+            # Ошибка закрытия не должна подменять исходную ошибку из блока with.
+            _log.warning("Не удалось закрыть клиент Яндекс.Диска", exc_info=True)
+        self._is_connected = False
 
-    def search_directories(self, name: str, path: str = "/") -> List[str]:
-        """
-        Поиск директорий по имени на Яндекс.Диске.
+    # ── Metadata / listing ──────────────────────────────────────────────────
 
-        Args:
-            name: Имя для поиска
-            path: Путь для поиска
+    @_c.translating
+    def exists(self, path: str) -> bool:
+        return bool(self._client.exists(normalize_remote_path(path)))
 
-        Returns:
-            Список путей к найденным директориям
-        """
-        result = []
+    @_c.translating
+    def get_item(self, path: str) -> StorageItem:
+        resource = self._client.get_meta(normalize_remote_path(path))
+        return _c.to_storage_item(resource)
+
+    def iter_items(self, path: str = "/") -> Iterator[StorageItem]:
+        remote = normalize_remote_path(path)
         try:
-            for item in self._client.listdir(path):
-                if not isinstance(item, dict):
-                    continue
-                if item.get("type") == "dir" and name.lower() in item.get("name", "").lower():
-                    result.append(item.get("path", ""))
+            for resource in self._client.listdir(remote):
+                yield _c.to_storage_item(resource)
         except Exception as e:
-            raise ConnectionError(f"Ошибка поиска директорий {name} в {path}: {e}") from e
-        return result
+            raise _c.translate_error(e) from e
 
-    def download_file(self, remote_path: str, local_path: Union[str, Path]) -> bool:
-        """
-        Скачивание файла с Яндекс.Диска.
+    # ── Операции ────────────────────────────────────────────────────────────
 
-        Args:
-            remote_path: Путь к файлу на Яндекс.Диске
-            local_path: Локальный путь для сохранения
-
-        Returns:
-            True если скачивание успешно, иначе False
-
-        Raises:
-            DownloadError: При ошибке скачивания
-        """
+    @_c.translating
+    def mkdir(self, path: str, *, parents: bool = True, exist_ok: bool = True) -> None:
+        remote = normalize_remote_path(path)
+        if parents:
+            parent = remote_parent(remote)
+            if parent != remote:
+                self._ensure_dir(parent)
         try:
-            local_path = Path(local_path)
-            local_path.parent.mkdir(parents=True, exist_ok=True)
+            self._client.mkdir(remote)
+        except (_exc.PathExistsError, _exc.DirectoryExistsError):
+            if not exist_ok:
+                raise RemoteExistsError(f"Каталог уже существует: {remote}")
 
-            self._client.download(remote_path, str(local_path))
-            return True
-        except Exception as e:
-            raise DownloadError(f"Ошибка скачивания файла {remote_path}: {e}") from e
-
-    def _ensure_directory_exists(self, remote_path: str) -> None:
-        """
-        Создает директорию на Яндекс.Диске, если она не существует.
-
-        Args:
-            remote_path: Путь к директории на Яндекс.Диске
-
-        Raises:
-            ConnectionError: При ошибке создания директории
-        """
+    @_c.translating
+    def upload_file(
+        self,
+        local_path: Union[str, Path],
+        remote_path: str,
+        *,
+        overwrite: bool = False,
+        create_parents: bool = True,
+    ) -> None:
+        local = Path(local_path)
+        remote = normalize_remote_path(remote_path)
+        if not local.exists():
+            raise LocalNotFoundError(f"Локальный файл не найден: {local}")
+        if not local.is_file():
+            raise LocalFileError(f"Источник не является файлом: {local}")
+        if create_parents:
+            parent = remote_parent(remote)
+            if parent != remote:
+                self._ensure_dir(parent)
         try:
-            if not self._client.exists(remote_path):
-                # Создаем родительские директории рекурсивно
-                parent = PurePosixPath(remote_path).parent
-                if str(parent) != "/" and str(parent) != ".":
-                    self._ensure_directory_exists(str(parent))
-                self._client.mkdir(remote_path)
-        except Exception as e:
-            raise ConnectionError(f"Ошибка создания директории {remote_path}: {e}") from e
+            self._client.upload(str(local), remote, overwrite=overwrite)
+        except (_exc.PathExistsError, _exc.DirectoryExistsError):
+            raise RemoteExistsError(f"Объект уже существует: {remote}")
 
-    def upload_file(self, local_path: Union[str, Path], remote_path: str) -> bool:
-        """
-        Загрузка файла на Яндекс.Диск.
+    @_c.translating
+    def download_file(
+        self,
+        remote_path: str,
+        local_path: Union[str, Path],
+        *,
+        overwrite: bool = False,
+        create_parents: bool = True,
+    ) -> None:
+        remote = normalize_remote_path(remote_path)
+        local = Path(local_path)
+        if local.exists() and not overwrite:
+            raise LocalExistsError(f"Локальный файл уже существует: {local}")
+        if create_parents:
+            local.parent.mkdir(parents=True, exist_ok=True)
+        self._client.download(remote, str(local))
 
-        Args:
-            local_path: Локальный путь к файлу
-            remote_path: Путь на Яндекс.Диске
+    @_c.translating
+    def delete(self, path: str, *, recursive: bool = False) -> None:
+        remote = normalize_remote_path(path)
+        if not recursive and self._client.is_dir(remote) and not self._is_empty_dir(remote):
+            raise RemoteConflictError(f"Каталог не пуст (recursive=False): {remote}")
+        self._client.remove(remote)
 
-        Returns:
-            True если загрузка успешна, иначе False
+    @_c.translating
+    def move(self, source: str, destination: str, *, overwrite: bool = False) -> None:
+        self._client.move(
+            normalize_remote_path(source),
+            normalize_remote_path(destination),
+            overwrite=overwrite,
+        )
 
-        Raises:
-            FileNotFoundError: Если локальный файл не найден (встроенное исключение Python)
-            UploadError: При ошибке загрузки
-        """
+    @_c.translating
+    def copy(self, source: str, destination: str, *, overwrite: bool = False) -> None:
+        self._client.copy(
+            normalize_remote_path(source),
+            normalize_remote_path(destination),
+            overwrite=overwrite,
+        )
+
+    # ── Внутреннее ──────────────────────────────────────────────────────────
+
+    def _ensure_dir(self, remote: str) -> None:
+        """Идемпотентно создаёт каталог и всех его предков (canonical путь)."""
+        if remote in ("/", ""):
+            return
+        if self._client.exists(remote):
+            return
+        parent = remote_parent(remote)
+        if parent != remote:
+            self._ensure_dir(parent)
         try:
-            local_path = Path(local_path)
-            if not local_path.exists():
-                raise FileNotFoundError(f"Локальный файл не найден: {local_path}")
+            self._client.mkdir(remote)
+        except (_exc.PathExistsError, _exc.DirectoryExistsError):
+            pass
 
-            # Создаем директорию на Яндекс.Диске, если ее нет
-            remote_dir = PurePosixPath(remote_path).parent
-            if str(remote_dir) != "." and str(remote_dir) != "/":
-                self._ensure_directory_exists(str(remote_dir))
-
-            self._client.upload(str(local_path), remote_path)
-            return True
-        except FileNotFoundError:
-            raise
-        except Exception as e:
-            raise UploadError(f"Ошибка загрузки файла {local_path}: {e}") from e
+    def _is_empty_dir(self, remote: str) -> bool:
+        for _ in self._client.listdir(remote):
+            return False
+        return True

@@ -1,21 +1,15 @@
 import os
 import time
-import sys
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
 
-# Добавляем путь к корню проекта для импорта
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
-
-from src.neuro_cloud_api import (
+from neuro_cloud_api import (
     SourceFactory,
     SourceType,
-    ConnectionError,
-    AuthenticationError,
-    FileNotFoundError,
-    UploadError,
-    DownloadError,
+    NeuroCloudError,
+    CloudConnectionError,
+    CloudAuthenticationError,
 )
 
 
@@ -87,31 +81,34 @@ def run_sync_example():
             source.connect()
             connect_time = time.perf_counter() - connect_start
             print(f"Connected (время подключения: {connect_time:.3f} сек)")
-        except (ConnectionError, AuthenticationError) as e:
+        except (CloudConnectionError, CloudAuthenticationError) as e:
             print(f"Connection failed: {e}")
             return
 
         print("\nListing directories in root:")
         list_start = time.perf_counter()
         try:
-            dirs = source.list_directories("/")
+            dirs = [item.path for item in source.list_items("/") if item.is_dir]
             list_time = time.perf_counter() - list_start
             for d in dirs:
                 print(" -", d)
             print(f"Найдено директорий: {len(dirs)} (время: {list_time:.3f} сек)")
-        except ConnectionError as e:
+        except NeuroCloudError as e:
             print(f"Ошибка получения списка директорий: {e}")
             list_time = time.perf_counter() - list_start
 
         print("\nSearching directories with 'test':")
         search_start = time.perf_counter()
         try:
-            found = source.search_directories("test", "/")
+            found = [
+                item.path for item in source.list_items("/")
+                if item.is_dir and "test" in item.name.lower()
+            ]
             search_time = time.perf_counter() - search_start
             for d in found:
                 print(" -", d)
             print(f"Найдено директорий с 'test': {len(found)} (время: {search_time:.3f} сек)")
-        except ConnectionError as e:
+        except NeuroCloudError as e:
             print(f"Ошибка поиска директорий: {e}")
             search_time = time.perf_counter() - search_start
 
@@ -120,11 +117,12 @@ def run_sync_example():
         try:
             source.upload_file(
                 local_path="test_upload.txt",
-                remote_path="/test_upload.txt"
+                remote_path="/test_upload.txt",
+                overwrite=True,
             )
             upload_time = time.perf_counter() - upload_start
             print(f"Время загрузки: {upload_time:.3f} сек")
-        except (FileNotFoundError, UploadError) as e:
+        except NeuroCloudError as e:
             print(f"Ошибка загрузки: {e}")
             upload_time = time.perf_counter() - upload_start
 
@@ -133,11 +131,12 @@ def run_sync_example():
         try:
             source.download_file(
                 remote_path="/test_upload.txt",
-                local_path=Path("downloads/test_upload.txt")
+                local_path=Path("downloads/test_upload.txt"),
+                overwrite=True,
             )
             download_time = time.perf_counter() - download_start
             print(f"Время скачивания: {download_time:.3f} сек")
-        except DownloadError as e:
+        except NeuroCloudError as e:
             print(f"Ошибка скачивания: {e}")
             download_time = time.perf_counter() - download_start
 
@@ -158,12 +157,12 @@ def run_sync_example():
             remote_path = f"{remote_dir}/{local_file.name}"
             file_start = time.perf_counter()
             try:
-                source.upload_file(local_path=local_file, remote_path=remote_path)
+                source.upload_file(local_path=local_file, remote_path=remote_path, overwrite=True)
                 file_time = time.perf_counter() - file_start
                 upload_times.append(file_time)
                 successful_uploads += 1
                 print(f"  [{i}/{len(test_files)}] {local_file.name}: {file_time:.3f} сек")
-            except UploadError as e:
+            except NeuroCloudError as e:
                 print(f"  [{i}/{len(test_files)}] Ошибка загрузки {local_file.name}: {e}")
                 upload_times.append(time.perf_counter() - file_start)
         
@@ -193,13 +192,14 @@ def run_sync_example():
             try:
                 source.download_file(
                     remote_path=remote_path,
-                    local_path=local_download_path
+                    local_path=local_download_path,
+                    overwrite=True,
                 )
                 file_time = time.perf_counter() - file_start
                 download_times.append(file_time)
                 successful_downloads += 1
                 print(f"  [{i}/{len(test_files)}] {local_file.name}: {file_time:.3f} сек")
-            except DownloadError as e:
+            except NeuroCloudError as e:
                 print(f"  [{i}/{len(test_files)}] Ошибка скачивания {local_file.name}: {e}")
                 download_times.append(time.perf_counter() - file_start)
         

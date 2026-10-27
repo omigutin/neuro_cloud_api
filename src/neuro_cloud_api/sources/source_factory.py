@@ -74,23 +74,15 @@ class SourceFactory:
         else:
             raise ValueError("Необходимо указать source_type или config")
 
-        # Создаем соответствующий источник на основе типа
+        # Создаем соответствующий источник на основе типа.
+        # Google Drive и S3 — заглушки: сразу сообщаем о нереализованности
+        # (единая semantics с create_async_source, см. фабрику async).
         if source_type_enum == SourceType.YANDEX_DISK:
             return YadiskSource(token=token)
         elif source_type_enum == SourceType.GOOGLE_DRIVE:
-            # Проверяем, существует ли реализация
-            try:
-                from .ggldisk_source import GoogleDriveSource
-                return GoogleDriveSource(token=token)
-            except ImportError:
-                raise SourceNotImplementedError("Google Drive источник еще не реализован")
+            raise SourceNotImplementedError("Google Drive источник еще не реализован")
         elif source_type_enum == SourceType.S3:
-            # Проверяем, существует ли реализация
-            try:
-                from .s3_source import S3Source
-                return S3Source(token=token)
-            except ImportError:
-                raise SourceNotImplementedError("S3 источник еще не реализован")
+            raise SourceNotImplementedError("S3 источник еще не реализован")
         else:
             raise ValueError(f"Неподдерживаемый тип источника: {source_type_enum}")
 
@@ -126,25 +118,13 @@ class SourceFactory:
         else:
             raise ValueError("Необходимо указать source_type или config")
 
-        # Создаем соответствующий асинхронный источник на основе типа
+        # Создаем соответствующий асинхронный источник на основе типа.
         if source_type_enum == SourceType.YANDEX_DISK:
             return YadiskSourceAsync(token=token)
         elif source_type_enum == SourceType.GOOGLE_DRIVE:
-            # Проверяем, существует ли реализация
-            try:
-                from .ggldisk_source import GoogleDriveSource
-                # Если есть только sync версия, создаем её, но это не async
-                raise SourceNotImplementedError("Google Drive асинхронный источник еще не реализован")
-            except ImportError:
-                raise SourceNotImplementedError("Google Drive асинхронный источник еще не реализован")
+            raise SourceNotImplementedError("Google Drive асинхронный источник еще не реализован")
         elif source_type_enum == SourceType.S3:
-            # Проверяем, существует ли реализация
-            try:
-                from .s3_source import S3Source
-                # Если есть только sync версия, создаем её, но это не async
-                raise SourceNotImplementedError("S3 асинхронный источник еще не реализован")
-            except ImportError:
-                raise SourceNotImplementedError("S3 асинхронный источник еще не реализован")
+            raise SourceNotImplementedError("S3 асинхронный источник еще не реализован")
         else:
             raise ValueError(f"Неподдерживаемый тип источника: {source_type_enum}")
 

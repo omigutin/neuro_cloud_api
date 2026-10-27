@@ -1,13 +1,24 @@
 """Публичный API библиотеки Neuro Cloud API."""
 
+# Доменная модель
+from .models import StorageItem, StorageItemKind
+
 # Исключения
 from .errors import (
-    NeuroCloudAPIError,
-    ConnectionError,
-    AuthenticationError,
-    FileNotFoundError,
-    UploadError,
-    DownloadError,
+    NeuroCloudError,
+    CloudAuthenticationError,
+    CloudConnectionError,
+    CloudRateLimitError,
+    RemoteNotFoundError,
+    RemoteConflictError,
+    RemoteExistsError,
+    RemotePermissionError,
+    LocalFileError,
+    LocalNotFoundError,
+    LocalConflictError,
+    LocalExistsError,
+    LocalPermissionError,
+    ProviderError,
     SourceNotImplementedError,
 )
 
@@ -27,13 +38,24 @@ from .sources.source_type import SourceType
 from .settings.config import NeuroCloudApiConfig
 
 __all__ = [
+    # Модель
+    "StorageItem",
+    "StorageItemKind",
     # Исключения
-    "NeuroCloudAPIError",
-    "ConnectionError",
-    "AuthenticationError",
-    "FileNotFoundError",
-    "UploadError",
-    "DownloadError",
+    "NeuroCloudError",
+    "CloudAuthenticationError",
+    "CloudConnectionError",
+    "CloudRateLimitError",
+    "RemoteNotFoundError",
+    "RemoteConflictError",
+    "RemoteExistsError",
+    "RemotePermissionError",
+    "LocalFileError",
+    "LocalNotFoundError",
+    "LocalConflictError",
+    "LocalExistsError",
+    "LocalPermissionError",
+    "ProviderError",
     "SourceNotImplementedError",
     # Интерфейсы
     "BaseSource",
